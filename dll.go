@@ -5,26 +5,38 @@ import (
 	"unsafe"
 )
 
-var ocrDll *syscall.Proc
+var dll syscall.Handle
+var initFun uintptr
+var ocrFunc uintptr
 
 func InitDll() error {
-	dll := syscall.MustLoadDLL("ocr.dll")
-	init := dll.MustFindProc("init")
-	init.Call()
-	ocrDll = dll.MustFindProc("ocr")
+	var err error
+	dll, err = syscall.LoadLibrary("ocr.dll")
+	if err != nil {
+		return err
+	}
+	initFun, err = syscall.GetProcAddress(dll, "init")
+	if err != nil {
+		return err
+	}
+	syscall.Syscall(initFun, 0, 0, 0, 0)
+	ocrFunc, err = syscall.GetProcAddress(dll, "ocr")
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
-func ocr(img []byte) (string, error) {
-	p := *((*int32)(unsafe.Pointer(&img)))
-	ret, _, err := ocrDll.Call(uintptr(p), uintptr(len(img)), 0)
-	if err != nil {
-		return "", err
-	}
-	return prttostr(ret), nil
+func ocr(img *[]byte) string {
+	p := *((*int32)(unsafe.Pointer(img)))
+	ret, _, _ := syscall.Syscall(ocrFunc, 2, uintptr(p), uintptr(len(*img)), 0)
+	return prttostr(ret)
 }
 
 func prttostr(vcode uintptr) string {
+	if vcode <= 0 {
+		return ""
+	}
 	var vbyte []byte
 	for {
 		sbyte := *((*byte)(unsafe.Pointer(vcode)))
